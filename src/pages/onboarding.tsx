@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Check,
   RotateCcw,
+  KeyRound,
 } from "lucide-react";
 
 const STEP_META = [
@@ -38,12 +39,12 @@ interface OnboardingState {
 }
 
 function saveState(state: OnboardingState) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 function loadState(): OnboardingState | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as OnboardingState;
   } catch {
@@ -52,7 +53,7 @@ function loadState(): OnboardingState | null {
 }
 
 function clearState() {
-  sessionStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(STORAGE_KEY);
 }
 
 /** Deep-search for a pairing code in any shape of response object */
@@ -109,14 +110,23 @@ async function tryPair(token: string, fullPhone: string) {
 }
 
 export function OnboardingPage() {
+  const location = useLocation();
+  const routeState = location.state as { token?: string; phone?: string } | null;
   const saved = useRef(loadState());
 
-  const [step, setStep] = useState(saved.current?.step ?? 1);
+  // If navigated from dashboard: token+phone → step 3, token only → step 2
+  const initialStep = routeState?.token
+    ? (routeState?.phone ? 3 : 2)
+    : (saved.current?.step ?? 1);
+  const initialToken = routeState?.token ?? saved.current?.token ?? "";
+  const initialPhone = routeState?.phone ?? saved.current?.phone ?? "";
+
+  const [step, setStep] = useState(initialStep);
   const [instanceName, setInstanceName] = useState(
     saved.current?.instanceName ?? ""
   );
-  const [token, setToken] = useState(saved.current?.token ?? "");
-  const [phone, setPhone] = useState(saved.current?.phone ?? "");
+  const [token, setToken] = useState(initialToken);
+  const [phone, setPhone] = useState(initialPhone);
   const [qrBase64, setQrBase64] = useState(saved.current?.qrBase64 ?? "");
   const [pairingCode, setPairingCode] = useState(
     saved.current?.pairingCode ?? ""
@@ -126,7 +136,7 @@ export function OnboardingPage() {
   const { setToken: saveToken } = useAuth();
   const { status } = useInstanceStatus(step === 3 ? token : null, 1000);
   const navigatedRef = useRef(false);
-  const phoneRef = useRef(saved.current?.phone ?? "");
+  const phoneRef = useRef(initialPhone);
 
   const sanitizedName = instanceName.replace(/\s+/g, "-");
   const fullPhone = phone.replace(/\D/g, "");
@@ -139,11 +149,31 @@ export function OnboardingPage() {
   useEffect(() => {
     if (step === 3 && status === "connected" && !navigatedRef.current) {
       navigatedRef.current = true;
-      clearState();
       toast.success("WhatsApp conectado com sucesso!");
       setTimeout(() => navigate("/dashboard"), 2000);
     }
   }, [step, status, navigate]);
+
+  // On mount: if restored to step 3, fetch fresh QR + pairing code
+  useEffect(() => {
+    if (initialStep !== 3 || !initialToken || !initialPhone) return;
+    const phone = initialPhone;
+    (async () => {
+      try {
+        console.log("[restore] fetching fresh QR and pair code...");
+        const qrResult = await getInstanceQR(token);
+        setQrBase64(qrResult.data.Qrcode);
+        await new Promise((r) => setTimeout(r, 1500));
+        const pairResult = await tryPair(token, phone);
+        const code = extractPairingCode(pairResult);
+        setPairingCode(code);
+        console.log("[restore] done, code:", code);
+      } catch (err) {
+        console.warn("[restore] failed:", err);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-refresh QR + pairing code every 30s while on step 3 and not connected
   useEffect(() => {
@@ -207,6 +237,7 @@ export function OnboardingPage() {
     e.preventDefault();
     if (!phone.trim()) return;
     phoneRef.current = fullPhone;
+    localStorage.setItem("instance-phone", fullPhone);
     setLoading(true);
     try {
       await fetchPairAndQR(fullPhone);
@@ -333,6 +364,18 @@ export function OnboardingPage() {
                 )}
               </Button>
             </form>
+
+            <div className="mt-6 border-t border-border/30 pt-6">
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full gap-2 text-muted-foreground transition-colors hover:text-primary"
+                onClick={() => navigate("/")}
+              >
+                <KeyRound className="h-4 w-4" />
+                Já tenho um token
+              </Button>
+            </div>
           </div>
         )}
 

@@ -39,7 +39,9 @@ export async function createInstance(name: string): Promise<{ token: string; nam
 }
 
 export async function getInstanceStatus(token: string): Promise<{ status: string }> {
-  return apiFetch("/instance/status", { token });
+  const result = await apiFetch<{ data: { Connected: boolean; LoggedIn: boolean } }>("/instance/status", { token });
+  const connected = result.data?.Connected && result.data?.LoggedIn;
+  return { status: connected ? "connected" : "disconnected" };
 }
 
 export async function getInstanceQR(token: string): Promise<{ data: { Qrcode: string; Code: string } }> {

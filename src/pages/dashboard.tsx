@@ -20,7 +20,7 @@ import {
 export function DashboardPage() {
   const { token, clearToken } = useAuth();
   const navigate = useNavigate();
-  const { status } = useInstanceStatus(token, 5000);
+  const { status, refresh } = useInstanceStatus(token, 5000);
   const [showToken, setShowToken] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
 
@@ -34,6 +34,7 @@ export function DashboardPage() {
     setDisconnecting(true);
     try {
       await disconnectInstance(token!);
+      await refresh();
       toast.success("Instância desconectada");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao desconectar");
@@ -135,7 +136,7 @@ export function DashboardPage() {
               ) : (
                 <Button
                   className="h-11 w-full gap-2 rounded-xl bg-primary font-medium tracking-wide transition-all hover:brightness-110"
-                  onClick={() => navigate("/onboarding")}
+                  onClick={() => navigate("/onboarding", { state: { token, phone: localStorage.getItem("instance-phone") ?? "" } })}
                 >
                   <RefreshCw className="h-4 w-4" />
                   Reconectar

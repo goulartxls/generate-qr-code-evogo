@@ -5,6 +5,7 @@ interface UseInstanceStatusReturn {
   status: string | null;
   isLoading: boolean;
   error: string | null;
+  refresh: () => Promise<void>;
 }
 
 export function useInstanceStatus(
@@ -39,13 +40,10 @@ export function useInstanceStatus(
 
     poll();
 
-    const id = setInterval(() => {
-      if (statusRef.current === "connected") return;
-      poll();
-    }, interval);
+    const id = setInterval(poll, interval);
 
     return () => clearInterval(id);
   }, [token, interval, poll]);
 
-  return { status, isLoading, error };
+  return { status, isLoading, error, refresh: poll };
 }
